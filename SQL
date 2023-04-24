@@ -1,0 +1,74 @@
+Задача: Ддя каждого пункта проекта определите и выведите одним SQL-запросом следующие аналитические показатели:
+--день, в который арендовали больше всего фильмов (в формате год-месяц-день);
+--количество фильмов, взятых в аренду в этот день;
+--день, в который продали фильмов на наименьшую сумму (в формате год-месяц-день);
+--сумму продажи в этот день.
+
+with t1 as 
+	(select s.store_id,
+		s2.staff_id
+	from store s 
+	join staff s2 on s2.store_id  = s.store_id),
+	t2 as ( select sum(p.amount) as sum_amount,
+				t1.store_id,
+				p.payment_date::date as payment_date,
+				row_number () over (partition by t1.store_id order by sum(p.amount)) as r1
+			from payment p 
+			join t1 on p.staff_id = t1.staff_id
+			group by p.payment_date::date, t1.store_id),
+	t3 as (select t1.store_id, 
+			r.rental_date::date,
+			count(i.film_id) as count_film,
+			row_number () over (partition by t1.store_id order by count(i.film_id) desc) as r2
+		from t1
+		join rental r on r.staff_id = t1.staff_id
+		join inventory i on i.inventory_id = r.inventory_id
+		group by r.rental_date::date, t1.store_id)
+select t3.store_id,
+	t3.rental_date,
+	t3.count_film,
+	t2.payment_date,
+	t2.sum_amount
+from t3
+join t2 on t2.store_id = t3.store_id and t2.r1 = 1
+where t3.r2 = 1;
+
+Задача: Для каждой страны определите и выведите одним SQL-запросом покупателей, которые попадают под условия:
+--покупатель, арендовавший наибольшее количество фильмов;
+--покупатель, арендовавший фильмов на самую большую сумму;
+--покупатель, который последним арендовал фильм.
+
+
+with t1 as (select c.address_id, 
+				concat(c.first_name, ' ', c.last_name) as name_,
+				i.film_id,
+				p.amount,
+				p.payment_date, c2.country_id,
+				c3.country,
+				row_number () over (partition by c3.country order by p.payment_date desc) r3
+			from customer c 
+			join rental r on r.customer_id = c.customer_id 
+			join payment p on p.customer_id = c.customer_id and r.rental_id = p.rental_id 
+			join inventory i on i.inventory_id = r.inventory_id 
+			join address a on a.address_id = c.address_id 
+			join city c2 on c2.city_id = a.city_id 
+			join country c3 on c2.country_id = c3.country_id 
+			),
+			t2 as (
+				select country, name_ ,
+				row_number () over (partition by country order by count(film_id) desc) r1,
+				row_number () over (partition by country order by sum(amount) desc) r2
+				from t1
+				group by country, name_
+				order by 1
+			)
+select t1.country as "Country",
+	t2.name_ as "Customer with max movie",
+	t22.name_ as "Customer with max total sum",
+	t1.name_ as "Last customer with rental movie "
+from t1
+join t2 on t2.country = t1.country and t2.r1 = 1
+join t2 t22 on t22.country = t1.country and t22.r2 = 1
+where t1.r3 = 1
+order by t1.country;
+

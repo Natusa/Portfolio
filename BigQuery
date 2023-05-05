@@ -1,0 +1,87 @@
+-- ABC, XYZ, RFM analysis in BigQiery
+
+    -- ABC
+
+SELECT
+  k.ProductID,
+  CASE
+    WHEN k.sum_Product*100/k.sum_Sales <50 THEN 'A'
+    WHEN k.sum_Product*100/k.sum_Sales BETWEEN 50
+  AND 80 THEN 'B'
+  ELSE
+  'C'
+END
+  AS ABC
+FROM (
+  SELECT
+    DISTINCT m.ProductID,
+    Sales,
+    m.Sales/SUM(m.Sales) OVER () AS Percent,
+    SUM(m.Sales) OVER (ORDER BY m.SALES DESC, m.ProductID) AS sum_Product,
+    SUM(m.Sales) OVER () AS sum_Sales
+  FROM (
+    SELECT
+      ProductID,
+      SUM(Sales) AS Sales,
+    FROM
+      `edu-project-13784.case33.consolidated`
+    GROUP BY
+      ProductID ) AS m ) AS k
+      
+     -- XYZ
+     
+  SELECT
+  k.ProductID,
+  VAR,
+  CASE
+    WHEN k.VAR<10 THEN 'X'
+    WHEN k.VAR>=25
+  OR k.VAR IS NULL
+  OR k.VAR=0 THEN 'Z'
+  ELSE
+  'Y'
+END
+  AS XYZ
+FROM (
+  SELECT
+    Product AS ProductID,
+    SQRT(STDDEV(Quantity))*100/AVG(Quantity) AS VAR
+  FROM  `edu-project-13784.case33.consolidated`
+  GROUP BY
+    1 ) AS k
+ORDER BY
+  XYZ
+  
+  -- RFM
+  
+ WITH combinedtable as (
+    SELECT
+        orders.CustomerID,
+        orders.OrderDate,
+        recentdata.recent_data,
+        sum(orders.Sales) as amount,
+        count(orders.OrderID) as totalevents
+    FROM 
+        `edu-project-13784.case33.consolidated` as orders
+    join
+    (
+        SELECT
+            CustomerID,
+            max(OrderDate) as recent_data
+        FROM `edu-project-13784.case33.consolidated `
+        GROUP BY 1) as recentdata
+        ON orders.CustomerID=recentdata.CustomerID
+    GROUP BY 1,2,3
+    ),
+    rfm as (
+SELECT
+    CustomerID,
+    DATE_DIFF(CURRENT_DATE(),recent_data,day) as Recency,
+    COUNT(totalevents) as Frequency,
+    Round(sum(amount),2) as Monetary
+FROM 
+    combinedtable
+GROUP BY 1,2
+ORDER BY Recency
+)
+SELECT * FROM rfm
